@@ -1,0 +1,49 @@
+[package]
+name = "mozvpn"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight cross-platform GUI client exposing Firefox built-in VPN to the operating system"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/nc0ted/mozvpn"
+authors = ["nc0ted <nikton234@gmail.com>"]
+keywords = ["vpn", "firefox", "proxy", "guardian"]
+categories = ["network-programming", "gui"]
+
+[dependencies]
+tokio = { version = "1.40", features = ["rt-multi-thread", "net", "io-util", "sync", "time", "macros"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = "1.8"
+webpki-roots = "0.26"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+dirs = "5.0"
+anyhow = "1.0"
+sha2 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+hex = "0.4"
+rand = "0.8"
+url = "2.5"
+image = { version = "0.25", default-features = false, features = ["png"] }
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
+ctrlc = "3.4"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+tray-icon = "0.24"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

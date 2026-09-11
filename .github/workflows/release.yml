@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --generate-notes || true
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin_name: mozvpn
+            asset_name: mozvpn-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_name: mozvpn.exe
+            asset_name: mozvpn-windows-x86_64.exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin_name: mozvpn
+            asset_name: mozvpn-macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin_name: mozvpn
+            asset_name: mozvpn-macos-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libclang-dev libwayland-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Stage asset and build AppImage (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p stage
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} stage/${{ matrix.asset_name }}
+          mkdir -p AppDir/usr/bin
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} AppDir/usr/bin/mozvpn
+          cp assets/icon.png AppDir/mozvpn.png
+          cat << 'DESKTOP' > AppDir/mozvpn.desktop
+          [Desktop Entry]
+          Name=MozVPN
+          Exec=mozvpn
+          Icon=mozvpn
+          Type=Application
+          Categories=Network;
+          Terminal=false
+          DESKTOP
+          cat << 'APPRUN' > AppDir/AppRun
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/mozvpn" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+          curl -sL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ./appimagetool --appimage-extract
+          ARCH=x86_64 ./squashfs-root/AppRun AppDir stage/mozvpn-x86_64.AppImage
+
+      - name: Stage asset (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p stage
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} stage/${{ matrix.asset_name }}
+
+      - name: Stage asset (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir stage
+          copy target\${{ matrix.target }}\release\${{ matrix.bin_name }} stage\${{ matrix.asset_name }}
+        shell: cmd
+
+      - name: Upload to Release (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.ref_name }} stage/* --clobber
+
+      - name: Upload to Release (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload ${{ github.ref_name }} (Get-Item stage/*).FullName --clobber
+        shell: pwsh
