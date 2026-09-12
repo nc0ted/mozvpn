@@ -64,11 +64,11 @@ pub fn init() -> Result<PathBuf> {
     let base_dir = dirs::data_local_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
-    let log_dir = base_dir.join("mozvpn");
+    let log_dir = base_dir.join("outfox");
     fs::create_dir_all(&log_dir).with_context(|| format!("failed to create log dir: {}", log_dir.display()))?;
 
-    let log_path = log_dir.join("mozvpn.log");
-    let backup_path = log_dir.join("mozvpn.log.old");
+    let log_path = log_dir.join("outfox.log");
+    let backup_path = log_dir.join("outfox.log.old");
 
     let logger = FileLogger::new(log_path.clone(), backup_path);
     let _ = LOGGER.set(logger);

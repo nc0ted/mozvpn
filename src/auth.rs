@@ -20,7 +20,6 @@ const FASTLY_ANYCAST_IPS: &[Ipv4Addr] = &[
     Ipv4Addr::new(151, 101, 65, 91),
     Ipv4Addr::new(151, 101, 129, 91),
     Ipv4Addr::new(151, 101, 193, 91),
-    Ipv4Addr::new(151, 101, 1, 91),
 ];
 
 const FXA_CLIENT_ID: &str = "5882386c6d801776";
@@ -100,14 +99,14 @@ pub async fn create_resilient_http_client() -> Result<Client> {
         let client = Client::builder()
             .resolve(FXA_AUTH_HOST, fxa_addr)
             .resolve(GUARDIAN_HOST, guardian_addr)
-            .timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(8))
             .build()?;
         return Ok(client);
     }
 
     crate::log_warn!("Using standard system DNS resolution fallback");
     let client = Client::builder()
-        .timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(8))
         .build()?;
     Ok(client)
 }
@@ -207,7 +206,7 @@ struct JwtClaims {
     exp: u64,
 }
 
-pub async fn mint_pass(session_token_hex: &str) -> Result<GuardianPass> {
+async fn mint_pass_attempt(session_token_hex: &str) -> Result<GuardianPass> {
     let client = create_resilient_http_client().await?;
     let hawk_keys = derive_hawk_keys(session_token_hex)?;
 
@@ -362,4 +361,14 @@ pub async fn mint_pass(session_token_hex: &str) -> Result<GuardianPass> {
         pass.seconds_left()
     );
     Ok(pass)
+}
+
+pub async fn mint_pass(session_token_hex: &str) -> Result<GuardianPass> {
+    match mint_pass_attempt(session_token_hex).await {
+        Ok(pass) => Ok(pass),
+        Err(e) => {
+            crate::log_warn!("Initial pass mint failed: {:#}. Retrying...", e);
+            mint_pass_attempt(session_token_hex).await
+        }
+    }
 }

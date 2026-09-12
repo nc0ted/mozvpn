@@ -1,4 +1,4 @@
-# MozVPN
+# Outfox
 
 Exposes Firefox built-in VPN (Mozilla IP Protection / Guardian) to your entire operating system.
 
@@ -12,7 +12,7 @@ Exposes Firefox built-in VPN (Mozilla IP Protection / Guardian) to your entire o
 
 ## Installation
 
-Download prebuilt binaries for Linux, Windows, and macOS from [Releases](https://github.com/nc0ted/mozvpn/releases).
+Download prebuilt binaries for Linux, Windows, and macOS from [Releases](https://github.com/nc0ted/outfox/releases).
 
 ### Build from source (optional)
 
@@ -20,7 +20,7 @@ Requires Rust 1.80+:
 
 ```bash
 cargo build --release
-./target/release/mozvpn
+./target/release/outfox
 ```
 
 ## Default Ports

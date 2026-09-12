@@ -31,20 +31,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            bin_name: mozvpn
-            asset_name: mozvpn-linux-x86_64
+            bin_name: outfox
+            asset_name: outfox-linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            bin_name: mozvpn.exe
-            asset_name: mozvpn-windows-x86_64.exe
+            bin_name: outfox.exe
+            asset_name: outfox-windows-x86_64.exe
           - os: macos-latest
             target: aarch64-apple-darwin
-            bin_name: mozvpn
-            asset_name: mozvpn-macos-arm64
+            bin_name: outfox
+            asset_name: outfox-macos-arm64
           - os: macos-latest
             target: x86_64-apple-darwin
-            bin_name: mozvpn
-            asset_name: mozvpn-macos-x86_64
+            bin_name: outfox
+            asset_name: outfox-macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -68,13 +68,13 @@ jobs:
           mkdir -p stage
           cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} stage/${{ matrix.asset_name }}
           mkdir -p AppDir/usr/bin
-          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} AppDir/usr/bin/mozvpn
-          cp assets/icon.png AppDir/mozvpn.png
-          cat << 'DESKTOP' > AppDir/mozvpn.desktop
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} AppDir/usr/bin/outfox
+          cp assets/icon.png AppDir/outfox.png
+          cat << 'DESKTOP' > AppDir/outfox.desktop
           [Desktop Entry]
-          Name=MozVPN
-          Exec=mozvpn
-          Icon=mozvpn
+          Name=Outfox
+          Exec=outfox
+          Icon=outfox
           Type=Application
           Categories=Network;
           Terminal=false
@@ -82,19 +82,78 @@ jobs:
           cat << 'APPRUN' > AppDir/AppRun
           #!/bin/sh
           HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bin/mozvpn" "$@"
+          exec "$HERE/usr/bin/outfox" "$@"
           APPRUN
           chmod +x AppDir/AppRun
           curl -sL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           ./appimagetool --appimage-extract
-          ARCH=x86_64 ./squashfs-root/AppRun AppDir stage/mozvpn-x86_64.AppImage
+          ARCH=x86_64 ./squashfs-root/AppRun AppDir stage/outfox-x86_64.AppImage
 
-      - name: Stage asset (macOS)
+      - name: Stage asset and build DMG / ZIP (macOS)
         if: runner.os == 'macOS'
         run: |
           mkdir -p stage
           cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} stage/${{ matrix.asset_name }}
+
+          APP="Outfox.app"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} "$APP/Contents/MacOS/outfox"
+          chmod +x "$APP/Contents/MacOS/outfox"
+
+          mkdir -p AppIcon.iconset
+          sips -z 16 16     assets/icon.png --out AppIcon.iconset/icon_16x16.png
+          sips -z 32 32     assets/icon.png --out AppIcon.iconset/icon_16x16@2x.png
+          sips -z 32 32     assets/icon.png --out AppIcon.iconset/icon_32x32.png
+          sips -z 64 64     assets/icon.png --out AppIcon.iconset/icon_32x32@2x.png
+          sips -z 128 128   assets/icon.png --out AppIcon.iconset/icon_128x128.png
+          sips -z 256 256   assets/icon.png --out AppIcon.iconset/icon_128x128@2x.png
+          sips -z 256 256   assets/icon.png --out AppIcon.iconset/icon_256x256.png
+          sips -z 512 512   assets/icon.png --out AppIcon.iconset/icon_256x256@2x.png
+          sips -z 512 512   assets/icon.png --out AppIcon.iconset/icon_512x512.png
+          sips -z 1024 1024 assets/icon.png --out AppIcon.iconset/icon_512x512@2x.png
+          iconutil -c icns AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns" || true
+
+          RAW_VER="${{ github.ref_name }}"
+          VER="${RAW_VER#v}"
+          cat << PLIST > "$APP/Contents/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleName</key>
+              <string>Outfox</string>
+              <key>CFBundleDisplayName</key>
+              <string>Outfox</string>
+              <key>CFBundleExecutable</key>
+              <string>outfox</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.nc0ted.outfox</string>
+              <key>CFBundleVersion</key>
+              <string>$VER</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$VER</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.13</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          codesign --force --deep -s - "$APP"
+
+          mkdir -p dmg_root
+          cp -r "$APP" dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "Outfox" -srcfolder dmg_root -ov -format UDZO "stage/${{ matrix.asset_name }}.dmg"
+
+          zip -r -y "stage/${{ matrix.asset_name }}.zip" "$APP"
 
       - name: Stage asset (Windows)
         if: runner.os == 'Windows'

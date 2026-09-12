@@ -1,3 +1,4 @@
+pub mod autostart;
 pub mod desktop;
 pub mod proxy;
 pub mod tray;

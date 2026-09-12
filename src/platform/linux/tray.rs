@@ -8,23 +8,23 @@ pub struct TrayHandle {
     pub quit_requested: Arc<AtomicBool>,
 }
 
-struct MozTray {
+struct OutfoxTray {
     show_requested: Arc<AtomicBool>,
     quit_requested: Arc<AtomicBool>,
     repaint_ctx: Option<egui::Context>,
 }
 
-impl ksni::Tray for MozTray {
+impl ksni::Tray for OutfoxTray {
     fn id(&self) -> String {
-        "mozvpn".into()
+        "outfox".into()
     }
 
     fn title(&self) -> String {
-        "MozVPN".into()
+        "Outfox".into()
     }
 
     fn icon_name(&self) -> String {
-        "mozvpn".into()
+        "outfox".into()
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
@@ -60,7 +60,7 @@ impl ksni::Tray for MozTray {
 
         vec![
             StandardItem {
-                label: "Show MozVPN".into(),
+                label: "Show Outfox".into(),
                 activate: Box::new(move |_| {
                     show_req.store(true, Ordering::Relaxed);
                     if let Some(ctx) = &ctx_show {
@@ -90,7 +90,7 @@ pub fn spawn_tray(rt: &tokio::runtime::Runtime, repaint_ctx: egui::Context) -> O
     let show_requested = Arc::new(AtomicBool::new(false));
     let quit_requested = Arc::new(AtomicBool::new(false));
 
-    let tray = MozTray {
+    let tray = OutfoxTray {
         show_requested: show_requested.clone(),
         quit_requested: quit_requested.clone(),
         repaint_ctx: Some(repaint_ctx),

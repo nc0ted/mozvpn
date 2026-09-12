@@ -9,15 +9,15 @@ pub fn ensure_desktop_entry() {
     if let Some(data_dir) = dirs::data_local_dir() {
         let apps_dir = data_dir.join("applications");
         let icons_dir = data_dir.join("icons").join("hicolor").join("256x256").join("apps");
-        let desktop_file = apps_dir.join("mozvpn.desktop");
-        let icon_file = icons_dir.join("mozvpn.png");
+        let desktop_file = apps_dir.join("outfox.desktop");
+        let icon_file = icons_dir.join("outfox.png");
 
         let _ = std::fs::create_dir_all(&apps_dir);
         let _ = std::fs::create_dir_all(&icons_dir);
         let _ = std::fs::write(&icon_file, include_bytes!("../../../assets/icon.png"));
 
         let bin_dir = dirs::home_dir().map(|h| h.join(".local").join("bin"));
-        let target_bin = bin_dir.as_ref().map(|b| b.join("mozvpn"));
+        let target_bin = bin_dir.as_ref().map(|b| b.join("outfox"));
 
         let source_exe = std::env::var("APPIMAGE")
             .ok()
@@ -44,7 +44,7 @@ pub fn ensure_desktop_entry() {
         };
 
         let entry = format!(
-            "[Desktop Entry]\nName=MozVPN\nTryExec={}\nExec={}\nIcon={}\nType=Application\nCategories=Network;\nTerminal=false\nStartupNotify=true\nStartupWMClass=mozvpn\n",
+            "[Desktop Entry]\nName=outfox\nTryExec={}\nExec={}\nIcon={}\nType=Application\nCategories=Network;\nTerminal=false\nStartupNotify=true\nStartupWMClass=outfox\n",
             final_exec.display(),
             final_exec.display(),
             icon_file.display()

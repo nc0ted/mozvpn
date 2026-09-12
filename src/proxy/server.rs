@@ -17,6 +17,13 @@ pub struct ProxyConfig {
     pub exit_host: String,
     pub requested_http_port: u16,
     pub requested_socks_port: u16,
+    pub allow_lan: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProxyHealth {
+    Healthy,
+    Degraded,
 }
 
 pub struct RunningProxy {
@@ -28,8 +35,10 @@ pub struct RunningProxy {
     pub token_expiry_timestamp: Arc<AtomicU64>,
     pub is_running: Arc<AtomicBool>,
     pub current_pass: Arc<RwLock<Option<GuardianPass>>>,
+    pub health: Arc<RwLock<ProxyHealth>>,
     shutdown_tx: broadcast::Sender<()>,
     reset_tx: broadcast::Sender<()>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl RunningProxy {
@@ -49,12 +58,15 @@ impl RunningProxy {
         let (shutdown_tx, _) = broadcast::channel(4);
         let (reset_tx, _) = broadcast::channel(16);
 
-        let http_listener = TcpListener::bind(("127.0.0.1", http_port)).await?;
-        let socks_listener = TcpListener::bind(("127.0.0.1", socks_port)).await?;
+        let bind_host = if config.allow_lan { "0.0.0.0" } else { "127.0.0.1" };
+        let http_listener = TcpListener::bind((bind_host, http_port)).await?;
+        let socks_listener = TcpListener::bind((bind_host, socks_port)).await?;
 
         crate::log_info!(
-            "Listeners active: HTTP on 127.0.0.1:{}, SOCKS5 on 127.0.0.1:{}, exit={}",
+            "Listeners active: HTTP on {}:{}, SOCKS5 on {}:{}, exit={}",
+            bind_host,
             http_port,
+            bind_host,
             socks_port,
             exit_host.read().await
         );
@@ -65,7 +77,7 @@ impl RunningProxy {
         let running_clone = Arc::clone(&is_running);
         let mut shutdown_rx_refresher = shutdown_tx.subscribe();
 
-        tokio::spawn(async move {
+        let refresher_task = tokio::spawn(async move {
             let mut backoff = Duration::from_secs(5);
             while running_clone.load(Ordering::Relaxed) {
                 let seconds_left = {
@@ -110,7 +122,51 @@ impl RunningProxy {
         let mut shutdown_rx_http = shutdown_tx.subscribe();
         let reset_tx_http = reset_tx.clone();
 
-        tokio::spawn(async move {
+        let health = Arc::new(RwLock::new(ProxyHealth::Healthy));
+        let health_clone = Arc::clone(&health);
+        let exit_health = Arc::clone(&exit_host);
+        let running_health = Arc::clone(&is_running);
+        let mut shutdown_rx_health = shutdown_tx.subscribe();
+        let session_token_health = config.session_token.clone();
+        let pass_health = Arc::clone(&current_pass);
+        let expiry_health = Arc::clone(&token_expiry_timestamp);
+
+        let health_task = tokio::spawn(async move {
+            let mut consecutive_failures = 0;
+            while running_health.load(Ordering::Relaxed) {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(20)) => {
+                        let host = exit_health.read().await.clone();
+                        let is_ok = crate::locations::probe_location_ping(&host, EXIT_PORT, 1200).await.is_some();
+                        if is_ok {
+                            if consecutive_failures > 0 {
+                                consecutive_failures = 0;
+                                *health_clone.write().await = ProxyHealth::Healthy;
+                                crate::log_info!("Proxy connection healthy");
+                            }
+                        } else {
+                            consecutive_failures += 1;
+                            if consecutive_failures >= 2 {
+                                *health_clone.write().await = ProxyHealth::Degraded;
+                                crate::log_warn!("Proxy connection degraded, attempting recovery");
+                                if let Ok(new_pass) = mint_pass(&session_token_health).await {
+                                    expiry_health.store(new_pass.exp, Ordering::Relaxed);
+                                    *pass_health.write().await = Some(new_pass);
+                                    *health_clone.write().await = ProxyHealth::Healthy;
+                                    consecutive_failures = 0;
+                                    crate::log_info!("Proxy connection recovered");
+                                }
+                            }
+                        }
+                    }
+                    _ = shutdown_rx_health.recv() => {
+                        break;
+                    }
+                }
+            }
+        });
+
+        let http_task = tokio::spawn(async move {
             while running_http.load(Ordering::Relaxed) {
                 tokio::select! {
                     accept_res = http_listener.accept() => {
@@ -144,7 +200,7 @@ impl RunningProxy {
         let mut shutdown_rx_socks = shutdown_tx.subscribe();
         let reset_tx_socks = reset_tx.clone();
 
-        tokio::spawn(async move {
+        let socks_task = tokio::spawn(async move {
             while running_socks.load(Ordering::Relaxed) {
                 tokio::select! {
                     accept_res = socks_listener.accept() => {
@@ -180,8 +236,10 @@ impl RunningProxy {
             token_expiry_timestamp,
             is_running,
             current_pass,
+            health,
             shutdown_tx,
             reset_tx,
+            tasks: vec![refresher_task, health_task, http_task, socks_task],
         })
     }
 
@@ -200,16 +258,34 @@ impl RunningProxy {
         self.is_running.store(false, Ordering::Relaxed);
         let _ = self.shutdown_tx.send(());
         let _ = self.reset_tx.send(());
+        for task in &self.tasks {
+            task.abort();
+        }
         if let Ok(mut guard) = self.current_pass.try_write() {
             *guard = None;
         }
     }
 }
 
+impl Drop for RunningProxy {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 pub fn is_port_free(port: u16) -> bool {
+    if port == 0 {
+        return false;
+    }
     StdTcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
 pub fn find_free_port(start: u16) -> Option<u16> {
     (start..(start + 100)).find(|&port| is_port_free(port))
+}
+
+pub fn get_local_ip() -> Option<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    Some(socket.local_addr().ok()?.ip().to_string())
 }

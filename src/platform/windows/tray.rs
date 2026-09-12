@@ -25,7 +25,7 @@ pub fn spawn_tray(_rt: &tokio::runtime::Runtime, repaint_ctx: egui::Context) -> 
     let icon = Icon::from_rgba(rgba, width, height).ok()?;
 
     let menu = Menu::new();
-    let show_item = MenuItem::new("Show MozVPN", true, None);
+    let show_item = MenuItem::new("Show Outfox", true, None);
     let separator = PredefinedMenuItem::separator();
     let quit_item = MenuItem::new("Quit", true, None);
 
@@ -39,7 +39,7 @@ pub fn spawn_tray(_rt: &tokio::runtime::Runtime, repaint_ctx: egui::Context) -> 
     ]);
 
     let tray_icon = match TrayIconBuilder::new()
-        .with_tooltip("MozVPN")
+        .with_tooltip("Outfox")
         .with_icon(icon)
         .with_menu(Box::new(menu))
         .build()

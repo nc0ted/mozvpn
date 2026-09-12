@@ -1,11 +1,11 @@
 [package]
-name = "mozvpn"
-version = "0.1.0"
+name = "outfox"
+version = "0.2.0"
 edition = "2021"
 description = "Lightweight cross-platform GUI client exposing Firefox built-in VPN to the operating system"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/nc0ted/mozvpn"
+repository = "https://github.com/nc0ted/outfox"
 authors = ["nc0ted <nikton234@gmail.com>"]
 keywords = ["vpn", "firefox", "proxy", "guardian"]
 categories = ["network-programming", "gui"]

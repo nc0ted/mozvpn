@@ -10,13 +10,25 @@ mod proxy;
 mod ui;
 
 use std::sync::Arc;
-use ui::MozVpnApp;
+use ui::OutfoxApp;
 
 fn main() -> eframe::Result {
     let _ = rustls::crypto::ring::default_provider().install_default();
     platform::init();
     let _ = logger::init();
-    log_info!("Starting MozVPN on {}", std::env::consts::OS);
+    log_info!("Starting Outfox on {}", std::env::consts::OS);
+
+    let cfg = config::load_config();
+    let args: Vec<String> = std::env::args().collect();
+    let has_minimized_arg = args.iter().any(|a| a == "--minimized" || a == "-m");
+    let start_minimized = cfg.start_minimized || has_minimized_arg;
+
+    let show_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let repaint_ctx = Arc::new(std::sync::Mutex::new(None));
+    if !platform::ensure_single_instance(!has_minimized_arg, Arc::clone(&show_flag), Arc::clone(&repaint_ctx)) {
+        log_info!("Existing Outfox instance found, exiting");
+        return Ok(());
+    }
 
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -43,13 +55,13 @@ fn main() -> eframe::Result {
     };
 
     let viewport = eframe::egui::ViewportBuilder::default()
-        .with_inner_size([290.0, 285.0])
-        .with_min_inner_size([280.0, 260.0])
-        .with_max_inner_size([300.0, 300.0])
+        .with_inner_size([290.0, 295.0])
+        .with_min_inner_size([290.0, 295.0])
+        .with_max_inner_size([290.0, 295.0])
         .with_resizable(false)
         .with_maximize_button(false)
-        .with_app_id("mozvpn")
-        .with_title("MozVPN");
+        .with_app_id("outfox")
+        .with_title("Outfox");
 
     #[cfg(windows)]
     let viewport = viewport.with_decorations(false);
@@ -60,15 +72,21 @@ fn main() -> eframe::Result {
         viewport
     };
 
+    let viewport = if start_minimized {
+        viewport.with_visible(false)
+    } else {
+        viewport
+    };
+
     let native_options = eframe::NativeOptions {
         viewport,
         ..Default::default()
     };
 
     let result = eframe::run_native(
-        "MozVPN",
+        "Outfox",
         native_options,
-        Box::new(|cc| Ok(Box::new(MozVpnApp::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(OutfoxApp::new(cc, show_flag, repaint_ctx, start_minimized)))),
     );
     let _ = platform::SystemProxy::disable();
     result
